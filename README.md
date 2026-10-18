@@ -134,6 +134,56 @@ npm run dev
 
 ---
 
+## ☁️ การ Deploy บน Vercel (Production)
+
+โปรเจกต์นี้ตั้งค่าให้พร้อม Deploy บน Vercel ด้วย PostgreSQL ผ่าน Prisma แล้ว
+
+### 1. เตรียมฐานข้อมูล PostgreSQL
+ใช้ Prisma Postgres, Neon, Supabase หรือ PostgreSQL อื่น ๆ ที่เข้าถึงได้จากอินเทอร์เน็ต
+(ห้ามใช้ `file:./dev.db` บน Vercel เพราะระบบไฟล์เป็นแบบชั่วคราว)
+
+### 2. ตั้งค่า Environment Variables ใน Vercel
+ไปที่ **Project Settings → Environment Variables** แล้วเพิ่มค่าต่อไปนี้
+(ดูตัวอย่างได้ในไฟล์ [`.env.example`](.env.example))
+
+| ตัวแปร | ค่า | หมายเหตุ |
+|---|---|---|
+| `DATABASE_URL` | `postgres://...?sslmode=require` | Connection string ของ PostgreSQL |
+| `AUTH_SECRET` | คีย์สุ่ม 32 ไบต์ | สร้างด้วย `openssl rand -base64 32` |
+| `AUTH_TRUST_HOST` | `true` | จำเป็นสำหรับ NextAuth บน Vercel |
+| `GITHUB_CLIENT_ID` | *(ไม่บังคับ)* | ใส่เมื่อต้องการเปิด GitHub Login |
+| `GITHUB_CLIENT_SECRET` | *(ไม่บังคับ)* | ใช้คู่กับ Client ID |
+
+### 3. Deploy
+```bash
+# ครั้งแรก: เชื่อมโปรเจกต์กับ Vercel
+npx vercel link
+
+# Deploy ขึ้น Production
+npx vercel --prod
+```
+หรือเชื่อม GitHub Repository ใน Vercel Dashboard เพื่อ Deploy อัตโนมัติทุกครั้งที่ Push
+
+> `vercel.json` กำหนด `buildCommand` เป็น `prisma generate && next build`
+> เพื่อให้ Prisma Client ถูกสร้างใหม่ทุกครั้งที่ Build
+
+### 4. เตรียมฐานข้อมูลบน Production (ทำครั้งเดียว)
+```bash
+# สร้างตารางตาม schema.prisma
+DATABASE_URL="<production-url>" npx prisma db push
+
+# ใส่ข้อมูลเริ่มต้น (บัญชี admin/user และสินค้าตัวอย่าง)
+DATABASE_URL="<production-url>" npm run db:seed
+```
+
+### 5. อัปเดต GitHub OAuth Callback URL
+หากเปิดใช้ GitHub Login ให้ตั้ง **Authorization callback URL** ใน GitHub Developer Settings เป็น:
+```
+https://<your-domain>/api/auth/callback/github
+```
+
+---
+
 ## 💡 วิธีการใช้งานระบบ
 
 1. **เข้าสู่ระบบ:**

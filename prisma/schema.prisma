@@ -1,7 +1,9 @@
 // Prisma Schema สำหรับระบบจัดการสต็อกสินค้า (Stock Management System)
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // รองรับทั้งเครื่อง local (darwin/linux) และ Vercel Serverless (Amazon Linux)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

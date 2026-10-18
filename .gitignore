@@ -1,0 +1,13 @@
+# Node modules
+node_modules/
+
+# Next.js build output
+.next/
+
+# SQLite databases
+*.db
+*.db-journal
+
+# Environment variables
+.env
+.env.local

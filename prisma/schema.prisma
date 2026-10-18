@@ -1,0 +1,88 @@
+// Prisma Schema สำหรับระบบจัดการสต็อกสินค้า (Stock Management System)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// บทบาทของผู้ใช้งานในระบบ (ADMIN: ผู้ดูแลระบบ, USER: ผู้ใช้งานทั่วไป)
+enum Role {
+  ADMIN
+  USER
+}
+
+// ตารางผู้ใช้งานระบบ (User)
+// จัดเก็บข้อมูลบัญชีผู้ใช้ บทบาท และการเชื่อมโยงกับ OAuth Accounts และ Sessions
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(USER)
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ตารางบัญชี OAuth จากผู้ให้บริการภายนอก (Account - สำหรับ NextAuth / Auth.js)
+// รองรับการเข้าสู่ระบบผ่านผู้ให้บริการภายนอก เช่น GitHub, Google
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// ตารางเซสชันของผู้ใช้ (Session - สำหรับ NextAuth / Auth.js)
+// จัดเก็บ Token และวันหมดอายุของเซสชันเมื่อผู้ใช้ล็อกอิน
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ตารางโทเค็นสำหรับการยืนยันตัวตน (VerificationToken - สำหรับ NextAuth / Auth.js)
+// ใช้สำหรับยืนยันอีเมลหรือส่งลิงก์เวทมนตร์ (Magic Link)
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ตารางสินค้าในสต็อก (Product)
+// จัดเก็บข้อมูลรายละเอียดสินค้า รหัส SKU หมวดหมู่ ราคา จำนวนคงเหลือ และหน่วยนับ
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String   @unique
+  category    String
+  price       Float
+  quantity    Int      @default(0)
+  unit        String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

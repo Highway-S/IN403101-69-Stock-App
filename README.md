@@ -1,6 +1,6 @@
 # 📦 ระบบจัดการสต็อกสินค้า (Small Shop Stock Management System)
 
-ระบบจัดการสต็อกสินค้าสำหรับร้านค้าขนาดเล็ก พัฒนาด้วย **Next.js (App Router) + TypeScript**, **Prisma + SQLite**, **Auth.js (NextAuth v5)**, **Tailwind CSS** และตรวจสอบความถูกต้องของข้อมูลด้วย **Zod**
+ระบบจัดการสต็อกสินค้าสำหรับร้านค้าขนาดเล็ก พัฒนาด้วย **Next.js 14 (App Router) + TypeScript**, **Prisma ORM 6 + PostgreSQL (รองรับ SQLite)**, **Auth.js (NextAuth v5)**, **Tailwind CSS** และตรวจสอบความถูกต้องของข้อมูลด้วย **Zod**
 
 ---
 
@@ -30,9 +30,10 @@
 | **Framework** | Next.js 14 (App Router) |
 | **Language** | TypeScript |
 | **Styling** | Tailwind CSS |
-| **Database & ORM** | SQLite + Prisma ORM 6 |
+| **Database & ORM** | PostgreSQL (Prisma Postgres / Neon / Supabase) หรือ SQLite (Local) + Prisma ORM 6 |
 | **Authentication** | Auth.js (NextAuth v5 beta) + Credentials (bcryptjs) & GitHub OAuth |
 | **Data Validation** | Zod 3 (ตรวจสอบทั้งฝั่งฟอร์ม UI และ Route Handler API) |
+| **Deployment** | Vercel Serverless Platform |
 
 ---
 
@@ -41,7 +42,8 @@
 ```text
 stock-app/
 ├── prisma/
-│   ├── schema.prisma          # Prisma Schema (User, Account, Session, Product)
+│   ├── dev.db                 # ไฟล์ SQLite (กรณีเลือกใช้ SQLite สำหรับ Local Dev)
+│   ├── schema.prisma          # Prisma Schema (User, Account, Session, VerificationToken, Product)
 │   └── seed.ts                # สคริปต์สร้างข้อมูลจำลอง (Admin, User, สินค้า 20 รายการ)
 ├── src/
 │   ├── app/
@@ -71,7 +73,8 @@ stock-app/
 │   │   ├── SearchFilterBar.tsx# ช่องค้นหา (ชื่อ/SKU) + ตัวกรองหมวดหมู่และสถานะ
 │   │   └── StockBadge.tsx     # ป้ายแสดงสถานะสต็อก (แยกตาม Role)
 │   ├── lib/
-│   │   ├── auth.ts            # คอนฟิก NextAuth v5 + JWT Callbacks
+│   │   ├── auth.config.ts     # การตั้งค่า NextAuth สำหรับ Edge Runtime / Middleware
+│   │   ├── auth.ts            # NextAuth v5 Core + Prisma Adapter + Credentials
 │   │   ├── constants.ts       # หมวดหมู่สินค้า, PAGE_SIZE, LOW_STOCK_THRESHOLD
 │   │   ├── prisma.ts          # Prisma Client Singleton Instance
 │   │   └── validations.ts     # Zod Schemas (Product, Register, Login)
@@ -79,10 +82,14 @@ stock-app/
 │   └── types/
 │       ├── next-auth.d.ts     # Type Augmentation ขยาย Session & User เพิ่ม role
 │       └── product.ts         # Types สำหรับ Product, API Response, Pagination
-├── .env                       # ตัวแปรสภาพแวดล้อม (Database, Auth Secret)
-├── package.json
-├── tailwind.config.ts
-└── tsconfig.json
+├── .env                       # ตัวแปรสภาพแวดล้อม (DATABASE_URL, AUTH_SECRET)
+├── .env.example               # ตัวอย่างการตั้งค่าตัวแปรสภาพแวดล้อม
+├── next.config.mjs            # Next.js Configuration
+├── package.json               # Dependencies และ Scripts
+├── postcss.config.mjs         # PostCSS Configuration
+├── tailwind.config.ts         # Tailwind CSS Configuration
+├── tsconfig.json              # TypeScript Configuration
+└── vercel.json                # Vercel Build Configuration & Security Headers
 ```
 
 ---
@@ -99,25 +106,44 @@ cd "stock-app"
 npm install
 ```
 
-### 3. ตรวจสอบไฟล์ `.env`
-ไฟล์ `.env` มีการตั้งค่าเริ่มต้นสำหรับ SQLite ดังนี้:
+### 3. ตั้งค่าไฟล์สภาพแวดล้อม (`.env`)
+คัดลอกไฟล์ตัวอย่าง `.env.example` ไปเป็น `.env`:
+```bash
+cp .env.example .env
+```
+
+กำหนดค่าตัวแปรในไฟล์ `.env`:
 ```env
-DATABASE_URL="file:./dev.db"
-AUTH_SECRET="super-secret-key-change-in-production-12345"
+# URL เชื่อมต่อฐานข้อมูล PostgreSQL (Prisma Postgres / Neon / Supabase)
+DATABASE_URL="postgres://username:password@host:port/database?sslmode=require"
+
+# รหัสสุ่มสำหรับเข้ารหัส JWT และ Session (สร้างด้วย: openssl rand -base64 33)
+AUTH_SECRET="your-generated-random-auth-secret-key"
+
+# กำหนดเป็น true เพื่อรองรับ Serverless / Proxy
 AUTH_TRUST_HOST=true
+
+# (ตัวเลือกเสริม) GitHub OAuth Login
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
 ```
-*(หากต้องการใช้งาน GitHub Login ให้กรอก `GITHUB_CLIENT_ID` และ `GITHUB_CLIENT_SECRET` ที่ได้จาก GitHub Developer Settings)*
+
+> 💡 **ต้องการรันแบบ SQLite Local ในเครื่อง (ออฟไลน์):**
+> 1. ในไฟล์ `prisma/schema.prisma` เปลี่ยน `provider = "postgresql"` เป็น `provider = "sqlite"`
+> 2. ในไฟล์ `.env` เปลี่ยน `DATABASE_URL` เป็น `"file:./dev.db"`
+
+---
 
 ### 4. ซิงค์ฐานข้อมูลและสร้างข้อมูลเริ่มต้น (Database Migration & Seed)
 ```bash
-# ซิงค์ตารางฐานข้อมูล SQLite
-npm run db:push
+# ซิงค์โครงสร้างตารางเข้าสู่ฐานข้อมูล
+npx prisma db push
 
-# เพิ่มข้อมูลบัญชีผู้ใช้เริ่มต้นและสินค้าจำลอง 20 รายการ
+# เพิ่มข้อมูลบัญชีผู้ใช้เริ่มต้น (Admin, User) และสินค้าจำลอง 20 รายการ
 npm run db:seed
 ```
+
+---
 
 ### 5. บัญชีผู้ใช้งานเริ่มต้นสำหรับทดสอบ (Seed Accounts)
 
@@ -125,6 +151,8 @@ npm run db:seed
 |---|---|---|---|
 | **ADMIN** | `admin@example.com` | `password123` | จัดการสินค้าได้ทั้งหมด (CRUD), เห็นจำนวนสต็อกจริง, ตัวกรองใกล้หมด |
 | **USER** | `user@example.com` | `password123` | ดูสินค้าได้อย่างเดียว (Read-only), เห็นสถานะ มีของ/หมด |
+
+---
 
 ### 6. เริ่มต้นเซิร์ฟเวอร์สำหรับพัฒนา (Development Server)
 ```bash
@@ -136,51 +164,30 @@ npm run dev
 
 ## ☁️ การ Deploy บน Vercel (Production)
 
-โปรเจกต์นี้ตั้งค่าให้พร้อม Deploy บน Vercel ด้วย PostgreSQL ผ่าน Prisma แล้ว
+โปรเจกต์นี้ตั้งค่าให้พร้อม Deploy บน Vercel ด้วย **PostgreSQL ผ่าน Prisma** เรียบร้อยแล้ว
 
 ### 1. เตรียมฐานข้อมูล PostgreSQL
-ใช้ Prisma Postgres, Neon, Supabase หรือ PostgreSQL อื่น ๆ ที่เข้าถึงได้จากอินเทอร์เน็ต
-(ห้ามใช้ `file:./dev.db` บน Vercel เพราะระบบไฟล์เป็นแบบชั่วคราว)
+ใช้ **Prisma Postgres**, **Neon**, **Supabase** หรือ Cloud PostgreSQL เจ้าใดก็ได้ 
+*(ห้ามใช้ `file:./dev.db` บน Vercel เนื่องจากระบบ Serverless ไม่รองรับการเขียนไฟล์ลงดิสก์ถาวร)*
 
-### 2. ตั้งค่า Environment Variables ใน Vercel
-ไปที่ **Project Settings → Environment Variables** แล้วเพิ่มค่าต่อไปนี้
-(ดูตัวอย่างได้ในไฟล์ [`.env.example`](.env.example))
+### 2. ตั้งค่า Environment Variables บน Vercel Dashboard
+ไปที่ **Project Settings → Environment Variables** แล้วเพิ่มตัวแปรดังนี้:
 
-| ตัวแปร | ค่า | หมายเหตุ |
-|---|---|---|
-| `DATABASE_URL` | `postgres://...?sslmode=require` | Connection string ของ PostgreSQL |
-| `AUTH_SECRET` | คีย์สุ่ม 32 ไบต์ | สร้างด้วย `openssl rand -base64 32` |
-| `AUTH_TRUST_HOST` | `true` | จำเป็นสำหรับ NextAuth บน Vercel |
-| `GITHUB_CLIENT_ID` | *(ไม่บังคับ)* | ใส่เมื่อต้องการเปิด GitHub Login |
-| `GITHUB_CLIENT_SECRET` | *(ไม่บังคับ)* | ใช้คู่กับ Client ID |
+| ตัวแปร (Key) | ค่า (Value) | ความจำเป็น |
+|---|---|:---:|
+| `DATABASE_URL` | `postgres://...?sslmode=require` | **จำเป็นมาก** |
+| `AUTH_SECRET` | รหัสสุ่มที่ได้จาก `openssl rand -base64 33` | **จำเป็นมาก** |
+| `AUTH_TRUST_HOST` | `true` | **จำเป็น** |
+| `GITHUB_CLIENT_ID` | *(Client ID จาก GitHub OAuth App)* | ไม่บังคับ |
+| `GITHUB_CLIENT_SECRET` | *(Client Secret จาก GitHub OAuth App)* | ไม่บังคับ |
 
-### 3. Deploy
-```bash
-# ครั้งแรก: เชื่อมโปรเจกต์กับ Vercel
-npx vercel link
-
-# Deploy ขึ้น Production
-npx vercel --prod
-```
-หรือเชื่อม GitHub Repository ใน Vercel Dashboard เพื่อ Deploy อัตโนมัติทุกครั้งที่ Push
-
-> `vercel.json` กำหนด `buildCommand` เป็น `prisma generate && next build`
-> เพื่อให้ Prisma Client ถูกสร้างใหม่ทุกครั้งที่ Build
-
-### 4. เตรียมฐานข้อมูลบน Production (ทำครั้งเดียว)
-```bash
-# สร้างตารางตาม schema.prisma
-DATABASE_URL="<production-url>" npx prisma db push
-
-# ใส่ข้อมูลเริ่มต้น (บัญชี admin/user และสินค้าตัวอย่าง)
-DATABASE_URL="<production-url>" npm run db:seed
-```
-
-### 5. อัปเดต GitHub OAuth Callback URL
-หากเปิดใช้ GitHub Login ให้ตั้ง **Authorization callback URL** ใน GitHub Developer Settings เป็น:
-```
-https://<your-domain>/api/auth/callback/github
-```
+### 3. Deploy ขึ้น Vercel
+เชื่อมต่อ GitHub Repository กับ Vercel เพื่อให้ Deploy อัตโนมัติทุกครั้งที่ Push โค้ด
+- ตัว `package.json` และ `vercel.json` ได้ตั้งค่า `buildCommand` เป็น:
+  ```bash
+  prisma generate && next build
+  ```
+  เพื่อให้ Prisma Client ถูก Generate ใหม่ทุกครั้งที่ Build บน Vercel
 
 ---
 
